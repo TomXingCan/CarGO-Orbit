@@ -1,0 +1,19 @@
+## Interface: 120100
+## Title: CarGO Orbit
+## Notes: Combat and information extensions for EllesmereUI.
+## Author: TomXingCan
+## Version: 0.0.1-dev
+## RequiredDeps: EllesmereUI
+## SavedVariables: CarGOOrbitDB
+
+Core/Addon.lua
+Locales/enUS.lua
+Config/Defaults.lua
+Core/Database.lua
+Core/EUIAdapter.lua
+Core/Diagnostics.lua
+Modules/InfoBar/Core.lua
+Modules/EnhancedResourceBars/Core.lua
+UI/Skin.lua
+UI/DebugPanel.lua
+Core/Events.lua

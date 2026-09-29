@@ -1,0 +1,18 @@
+# Local development tools and test runtimes must not ship with the addon.
+.tools/
+__pycache__/
+*.py[cod]
+
+# Editor and operating system files.
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local output and archives.
+dist/
+build/
+*.zip
+*.log
