@@ -66,16 +66,11 @@ DataBars extension, Resource Bars extension, and native options registration cap
 
 Only `CarGOOrbitDB` is owned by this addon. Schema version `2` extends `profile.infoBar` in place with layout, appearance, visibility, and Time settings. Migration repairs known InfoBar fields, retains unknown fields and valid preferences, and leaves existing Enhanced Resource Bars data unchanged. Complete defaults are in the [InfoBar specification](docs/INFOBAR_SPEC.md). Profiles and import/export remain outside scope.
 
-## Validation
+## Development and validation
 
-From the repository root:
+Development is managed on GitHub through feature branches and Draft pull requests. Keep changes off `main` until review is complete.
 
-```text
-python tests/static_scan.py
-python tests/run.py
-```
-
-The runner requires Python 3.9+ and `lupa.lua51`; it recognizes a local installation under ignored `.tools/python`. A development installation can use `python -m pip install --target .tools/python lupa`. With standalone Lua 5.1, run `lua5.1 tests/run.lua` alongside the static scan. These tools are not bundled with the addon.
+The [Validate workflow](https://github.com/TomXingCan/CarGO-Orbit/actions/workflows/validate.yml) runs on pushes and pull requests. GitHub-hosted runners use Python 3.12 and Lupa 2.8's Lua 5.1 runtime to execute `python tests/run.py`. Dependencies stay in the runner environment and are not bundled with the addon.
 
 Checks cover schema migration, preset mapping, pure geometry, provider lifecycle, clock formatting and sources, visibility, commands, public API fallback, TOC paths, and Lua 5.1 syntax. Mocks cannot establish game-client rendering or compatibility.
 
