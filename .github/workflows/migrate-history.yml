@@ -113,6 +113,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Lua test runtime
-        run: python -m pip install --disable-pip-version-check --only-binary=:all: "lupa==2.8"
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: "lupa==2.8"
       - name: Validate addon
         run: python tests/run.py
