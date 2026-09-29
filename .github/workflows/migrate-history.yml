@@ -1,0 +1,118 @@
+name: Import original Git history
+
+on:
+  push:
+    branches: [codex/github-migration]
+    paths: [.github/workflows/migrate-history.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cargo-orbit-history-migration
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Preserve original commits and branches
+    if: github.repository == 'TomXingCan/CarGO-Orbit' && github.ref == 'refs/heads/codex/github-migration'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      MIGRATION_SHA: ${{ github.sha }}
+      SEED_SHA: acae273e4d0fcff6a5700a217681df3aa3008d43
+      BASE_SHA: 163e39abe88bd984f2d466987ab3595f7e3a8f82
+      BOOTSTRAP_SHA: 8cbd38b8ecb536d4a8b87dfbeb22223147051d57
+      FEATURE_SHA: bcd8d5df52e7c507a399a2f1084c9115006c959b
+      BUNDLE_SHA256: 93bc747941ec558b0dd26e15d9f442740d28fac1f027fe7d6cdeaba4120c1bb5
+    steps:
+      - name: Check out migration archive
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify and import original Git objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MIGRATION_SHA"
+          bundle="$RUNNER_TEMP/cargo-orbit-history.bundle"
+          base64 --decode .github/migration/history.bundle.b64 > "$bundle"
+          test "$(stat --format=%s "$bundle")" = "59094"
+          printf '%s  %s\n' "$BUNDLE_SHA256" "$bundle" | sha256sum --check --status
+          git bundle verify "$bundle"
+          actual_heads="$(git bundle list-heads "$bundle" | LC_ALL=C sort)"
+          expected_heads="$(printf '%s\n' "$BASE_SHA refs/heads/main" "$BOOTSTRAP_SHA refs/heads/bootstrap/0.0.1" "$FEATURE_SHA refs/heads/feat/infobar-foundation" | LC_ALL=C sort)"
+          test "$actual_heads" = "$expected_heads"
+          git fetch --no-tags "$bundle" \
+            refs/heads/main:refs/migration/original-main \
+            refs/heads/bootstrap/0.0.1:refs/migration/bootstrap \
+            refs/heads/feat/infobar-foundation:refs/migration/infobar
+          test "$(git rev-parse refs/migration/original-main)" = "$BASE_SHA"
+          test "$(git rev-parse refs/migration/bootstrap)" = "$BOOTSTRAP_SHA"
+          test "$(git rev-parse refs/migration/infobar)" = "$FEATURE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$BOOTSTRAP_SHA"
+          git merge-base --is-ancestor "$BOOTSTRAP_SHA" "$FEATURE_SHA"
+
+      - name: Publish original development branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_remote_refs() {
+            git ls-remote --heads origin refs/heads/main refs/heads/codex/github-migration refs/heads/bootstrap/0.0.1 refs/heads/feat/infobar-foundation
+          }
+          remote_sha() {
+            awk -v ref="$1" '$2 == ref { print $1 }' <<< "$remote_refs"
+          }
+          remote_refs="$(read_remote_refs)"
+          test "$(remote_sha refs/heads/main)" = "$SEED_SHA"
+          test "$(remote_sha refs/heads/codex/github-migration)" = "$MIGRATION_SHA"
+          for pair in "refs/heads/bootstrap/0.0.1:$BOOTSTRAP_SHA" "refs/heads/feat/infobar-foundation:$FEATURE_SHA"; do
+            ref="${pair%%:*}"
+            expected="${pair#*:}"
+            actual="$(remote_sha "$ref")"
+            if [[ -n "$actual" && "$actual" != "$expected" ]]; then
+              printf 'Ref already exists at an unexpected commit: %s\n' "$ref" >&2
+              exit 1
+            fi
+          done
+          git push --atomic origin \
+            "$BOOTSTRAP_SHA:refs/heads/bootstrap/0.0.1" \
+            "$FEATURE_SHA:refs/heads/feat/infobar-foundation"
+          remote_refs="$(read_remote_refs)"
+          test "$(remote_sha refs/heads/main)" = "$SEED_SHA"
+          test "$(remote_sha refs/heads/codex/github-migration)" = "$MIGRATION_SHA"
+          test "$(remote_sha refs/heads/bootstrap/0.0.1)" = "$BOOTSTRAP_SHA"
+          test "$(remote_sha refs/heads/feat/infobar-foundation)" = "$FEATURE_SHA"
+          {
+            printf '%s\n' 'Original Git history imported and remote refs verified.'
+            printf '\nBootstrap: %s\nInfoBar: %s\nOriginal main: %s\n' "$BOOTSTRAP_SHA" "$FEATURE_SHA" "$BASE_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  validate:
+    name: Validate imported ${{ matrix.stage }}
+    needs: import
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: bootstrap
+            ref: 8cbd38b8ecb536d4a8b87dfbeb22223147051d57
+          - stage: infobar
+            ref: bcd8d5df52e7c507a399a2f1084c9115006c959b
+    steps:
+      - name: Check out imported commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Lua test runtime
+        run: python -m pip install --disable-pip-version-check --only-binary=:all: "lupa==2.8"
+      - name: Validate addon
+        run: python tests/run.py
