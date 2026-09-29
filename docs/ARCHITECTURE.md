@@ -1,14 +1,6 @@
 # Architecture
 
-CarGO Orbit `0.0.1-dev` is a Retail bootstrap with one public integration boundary and two feature stubs.
-
-```text
-CarGO Orbit
-|-- Core: namespace, database, events, diagnostics
-|-- EUIAdapter: the only EUI integration boundary
-|-- InfoBar: lifecycle stub
-`-- Enhanced Resource Bars: lifecycle stub
-```
+CarGO Orbit `0.1.0` has one public EllesmereUI integration boundary, an owned InfoBar runtime, and an unchanged Enhanced Resource Bars lifecycle stub.
 
 ## Repository and installed addon
 
@@ -24,7 +16,12 @@ CarGO-Orbit/
 |   |   `-- Diagnostics.lua
 |   |-- Config/Defaults.lua
 |   |-- Modules/
-|   |   |-- InfoBar/Core.lua
+|   |   |-- InfoBar/
+|   |   |   |-- Core.lua
+|   |   |   |-- Layout.lua
+|   |   |   |-- Registry.lua
+|   |   |   |-- Presets.lua
+|   |   |   `-- Providers/Time.lua
 |   |   `-- EnhancedResourceBars/Core.lua
 |   |-- UI/
 |   |   |-- Skin.lua
@@ -39,74 +36,79 @@ CarGO-Orbit/
 `-- .gitignore
 ```
 
-Only `CarGO_Orbit/` belongs in the game's AddOns directory. Documentation and test tools stay at the repository root. EllesmereUI is installed separately and declared as a required dependency.
+Only `CarGO_Orbit/` belongs in the game's AddOns directory. EllesmereUI remains a required dependency. Public styling fallback does not remove that loader requirement; tests with EllesmereUI absent only establish runtime nil safety. No framework is introduced.
 
 ## Responsibilities
 
 | Component | Responsibility |
 | --- | --- |
-| `Core/Addon.lua` | Lightweight namespace, version, module registry, and addon lifecycle. |
-| `Config/Defaults.lua` | Defaults for Orbit-owned saved settings. |
-| `Core/Database.lua` | Nil-safe initialization and preservation of unknown fields. |
-| `Core/Events.lua` | Track and release Orbit-owned event and timer resources. |
-| `Core/EUIAdapter.lua` | Public API detection, skin wrappers, live style access, and looks-change dispatch. |
-| `Core/Diagnostics.lua` | Local slash-command output and bounded, event-driven debug logging. |
-| `UI/Skin.lua` | Orbit UI helpers that call the adapter. |
-| `UI/DebugPanel.lua` | Reusable bootstrap controls owned by Orbit. |
-| `Modules/*/Core.lua` | Persisted enable/disable state and lifecycle stubs. |
-| `Locales/enUS.lua` | English strings for this stage. |
+| `Core/Addon.lua` | Namespace, version, module registry, and addon lifecycle. |
+| `Config/Defaults.lua` | Canonical defaults and frozen default slot mapping. |
+| `Core/Database.lua` | In-place initialization, InfoBar repair/reset, and schema migration. |
+| `Core/Events.lua` | Owned subscriptions, one-shot timers, tickers, and cleanup. |
+| `Core/EUIAdapter.lua` | Public detection, wrappers, style getters, and appearance notification dispatch. |
+| `Core/Diagnostics.lua` | Existing slash parser, settings entry, status, and bounded logging. |
+| `InfoBar/Core.lua` | Enable/disable, visibility, apply, and theme/resize subscriptions. |
+| `InfoBar/Layout.lua` | One bar, three regions, nine stable buttons, pure geometry, and debug overlays. |
+| `InfoBar/Registry.lua` | Registration, single-instance assignment, callback isolation, and detach. |
+| `InfoBar/Presets.lua` | Expose and apply the canonical Toxi-style mapping. |
+| `InfoBar/Providers/Time.lua` | Clock content and its timer within the assigned host. |
+| `UI/Skin.lua`, `UI/DebugPanel.lua` | Existing reusable bootstrap skinning controls. |
+| `EnhancedResourceBars/Core.lua` | Unchanged stub; no host integration or gameplay UI. |
 
-No framework dependency is introduced. The namespace exposes `name`, `version`, `debug`, `modules`, and `capabilities`, with `RegisterModule(name, module)` and `GetModule(name)`.
+The namespace retains `RegisterModule(name, module)` and `GetModule(name)`. Providers belong to InfoBar's small registry rather than the addon-level module registry.
 
 ## Public integration contract
 
-**EUIAdapter is the only EUI integration boundary.** Other components request styling and state through it. They do not access EllesmereUI globals, saved settings, frames, or internal implementations directly.
+**EUIAdapter is the only EllesmereUI integration boundary.** Other components do not inspect that addon's globals, saved settings, frames, or implementation details. The adapter receives the public Skinning API from `EllesmereUI.RegisterSkin`, checks its version/enabled state, and guards callable methods. See the official [Skinning API reference](https://github.com/EllesmereGaming/EllesmereUI/blob/main/SKINNING_API.md).
 
-The adapter detects EllesmereUI and its documented `RegisterSkin` entry point. It receives the borrowed Skinning API object in the registration callback, reads the public `apiVersion`, and gates use on supported API versions and callable methods. The documented contract is [Skinning API](https://github.com/EllesmereGaming/EllesmereUI/blob/main/SKINNING_API.md).
+The bootstrap panel retains public shell/control/font/status-bar styling. InfoBar uses ordinary owned frames and a simple background, with public `GetPanelColor`, `GetAccentColor`, and `GetFont` values. It does not style slots as button cards. Ready and looks-change callbacks refresh colors and clock fonts without rebuilding providers. Missing, disabled, or unsupported public styling has local fallbacks. If disabling skinning emits no callback, custom appearance may retain its last state until another apply or reload.
 
-Missing APIs and failed public calls leave Orbit operational. The callback can be delayed until login, run immediately for a late registration, or be suppressed when third-party skinning is disabled. Availability of the addon alone therefore does not establish availability of the Skinning API.
-
-Wrappers cover shell, panel, button, checkbox, dropdown, edit box, scrollbar, tab, font, and status-bar styling. Color/font accessors read current public values. Color values are not cached for the session. Public looks-change notifications refresh Orbit-owned custom elements without rebuilding the entire window.
-
-| Adapter operation | Public API |
-| --- | --- |
-| Register the addon | `EllesmereUI.RegisterSkin` |
-| Detect version and enabled state | `S.apiVersion`, `S.IsEnabled` |
-| Style shell and panel | `S.Shell`, `S.Panel` |
-| Style controls | `S.Button`, `S.Checkbox`, `S.Dropdown`, `S.EditBox`, `S.ScrollBar`, `S.Tab` |
-| Style font and status bar | `S.Font`, `S.ApplyBarFill` |
-| Read current style values | `S.GetAccentColor`, `S.GetPanelColor`, `S.GetFont` |
-| Subscribe to appearance changes | `S.OnLooksChanged` |
-
-The documented current API version is 2. These particular wrappers use primitives already present in version 1; a missing/invalid version or missing individual method degrades gracefully. An additive future API version can retain these same primitives.
-
-The panel actually invokes `Shell`, `Panel`, `Button`, `Checkbox`, `EditBox`, `Font`, `ApplyBarFill`, and `GetAccentColor`, with registration, version/enabled checks, and looks notifications handled by the adapter. `Dropdown`, `ScrollBar`, `Tab`, `GetPanelColor`, and `GetFont` have adapter wrappers but are not exercised by the bootstrap panel.
-
-The capability registry reports:
-
-| Capability | Meaning in this stage |
+| Capability | Meaning |
 | --- | --- |
 | `eui` | EllesmereUI is present. |
-| `skinAPI` | A supported public Skinning API is available. |
-| `skinAPIVersion` | Received public API version, or `0` when no valid version was received. |
-| `dataBarsExtensionAPI` | Always `false`; no supported extension contract is used. |
-| `resourceBarsExtensionAPI` | Always `false`; no supported host contract is used. |
-| `optionsRegistrationAPI` | Always `false`; no native options registration is attempted. |
+| `skinAPI` | A supported public Skinning API is available and enabled. |
+| `skinAPIVersion` | Received valid version, or `0`. |
+| `dataBarsExtensionAPI` | Always `false`; no extension contract is used. |
+| `resourceBarsExtensionAPI` | Always `false`; no host contract is used. |
+| `optionsRegistrationAPI` | Always `false`; configuration uses existing commands. |
 
-## Settings and module state
+The public registration and appearance APIs have no unregister operation. The adapter retains one stable session bridge and borrowed public handle. Disable removes Orbit listener closures and suppresses dispatch. Re-enable reuses those bridges without duplicate external callbacks.
 
-The only saved variable is `CarGOOrbitDB`. It has `meta.schemaVersion = 1` and a `profile` table containing `debug`, `infoBar.enabled`, and `enhancedResourceBars.enabled`. These profile flags default to `false`. Initialization fills missing defaults without deleting unknown keys; malformed required containers are repaired safely. This is a single settings container, not a profile system.
+## InfoBar runtime
 
-Each feature stub exposes `IsEnabled()`, `Enable()`, and `Disable()`. Enabling InfoBar records intent without creating a bar. Enabling Enhanced Resource Bars records `enabled-but-no-host` because no public extension contract is available. Neither stub creates gameplay UI, predictions, or attachments.
+Enable repairs settings, registers combat/display/scale events, applies geometry and assignments, updates visibility, and subscribes to appearance changes. Repeated Enable is idempotent. Disabled settings can be edited without creating an active bar.
 
-## Resource lifecycle
+Layout builds frames once. `Calculate(width, height, spacing)` returns pure geometry for offline tests. Three equal regions anchor independently to the bar, each with three equal cells. The center region and its second slot use centered anchors; provider text cannot affect them. Width `0` resolves to `UIParent` width minus `24`; fixed requests are capped to the same available width for rendering. Narrow layouts reduce effective spacing to retain positive, distinct slots.
 
-Every event, timer, frame, and listener belongs to Orbit or an Orbit module. Disable releases owned event subscriptions and timers, hides/clears debug UI, and removes temporary listeners and references. There is no permanent per-frame update loop. Debug output occurs in response to events and is bounded.
+Registry maps saved keys to stable hosts. Missing providers remain silent; the first duplicated key wins in deterministic slot order. Each provider has one cached instance and at most one active assignment. Apply reuses its host and calls Refresh without repeating active Enable. Failed factories are also cached to prevent repeated frame allocation on resize.
 
-EllesmereUI's documented registration and looks-change APIs do not provide unregister operations. To avoid inventing cleanup calls or accumulating external callbacks, the adapter keeps one stable bridge per external registration and its borrowed public API reference for the session. Disable clears all Orbit listener closures and suppresses bridge dispatch. Re-enable reuses the bridges and retained API; it does not register duplicates. These externally retained bridges are a public API limitation, not active Orbit UI listeners after disable.
+The contract is `InfoBar:RegisterProvider(key, factory)`, with `factory:Create(host, settings)` returning an instance. Create only builds UI; Enable acquires runtime resources. Instances implement Enable, Disable, and Refresh, with optional OnEnter, OnLeave, and OnClick. Registry rejects incomplete contracts and instances shared across keys, updates `instance.settings`, and isolates callbacks with `pcall`. Providers own content inside the host; Layout owns global geometry. Registry also cleans resources tracked through `ns.Events` for each detached instance.
 
-The test panel is created lazily, hidden on disable, and reused. After initial styling, looks changes refresh only Orbit-owned drawing that needs a fresh public color. EllesmereUI remains responsible for its own skinned control behavior.
+The bar and slots receive pointer motion with clicks disabled by default. Registry enables slot clicks only for an active OnClick handler. Time has no click action.
+
+## Visibility and lifecycle
+
+| Policy | Enabled behavior |
+| --- | --- |
+| ALWAYS | Shown at full alpha. |
+| NO_COMBAT | Hidden in combat; combat events update state. |
+| MOUSEOVER | Shown at alpha zero away from the pointer; entry/leave and a native mouse-over query reveal it. |
+
+MOUSEOVER uses no timer or per-frame cursor polling. Visibility affects only InfoBar and does not stop Time. Disable hides the complete bar, removes theme listeners and runtime events, cancels provider timers, clears assignments and temporary settings references, and hides debug overlays. Frames and instances remain reusable for the session.
+
+Time uses one `ns.Events:Every(instance, 1, callback)` ticker. It samples local time once per update or reads the server clock, and only changes displayed strings when needed. Cleanup cancels the ticker and invalidates queued callbacks. Hover changes one existing texture's alpha without allocating visual objects.
+
+Client API signature research uses Blizzard's mirrored [timer declarations](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/UITimerDocumentation.lua), [TimeManager clock usage](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_TimeManager/Mainline/Blizzard_TimeManager.lua), and [script-region mouse APIs](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/SimpleScriptRegionAPIDocumentation.lua). These references do not substitute for client validation.
+
+## Settings
+
+`CarGOOrbitDB` remains the only saved variable. Schema `2` extends `profile.infoBar` with placement, dimensions, background, visibility, mapping, and provider settings. Known InfoBar containers and values are repaired in place; valid preferences and unknown fields remain. Existing Enhanced Resource Bars data is unchanged and receives no migration.
+
+Reset restores known InfoBar defaults and preset slots while preserving enabled state and unknown fields. Slot debug is transient and separate from saved debug logging. This remains one settings container without profile selection or import/export. See [InfoBar defaults](INFOBAR_SPEC.md#saved-settings).
 
 ## Validation boundary
 
-Static scans validate manifest paths and ordering, dependency boundaries, and prohibited integration patterns. The Python runner compiles the addon and test harness as Lua 5.1 before running the mocked lifecycle checks. The harness exercises settings, cleanup, adapter failures, capability reporting, and callback handling. It cannot reproduce the Retail client or validate rendered theme behavior. The README contains the required manual checks; no in-game validation is claimed.
+Static checks cover TOC paths/order, integration boundaries, and prohibited patterns. The runner compiles addon and test code as Lua 5.1 before mocked execution. Tests cover repair, presets, geometry, assignments, formats/sources, visibility, commands, repeated activation, fallback, and cleanup.
+
+Mocks do not validate Retail pixels, pointer delivery, font metrics, theme rendering, or compatibility. The [manual checklist](../README.md#manual-retail-checklist) remains unverified; no in-game success is claimed.

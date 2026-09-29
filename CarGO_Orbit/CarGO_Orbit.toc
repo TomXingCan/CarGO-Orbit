@@ -2,7 +2,7 @@
 ## Title: CarGO Orbit
 ## Notes: Combat and information extensions for EllesmereUI.
 ## Author: TomXingCan
-## Version: 0.0.1-dev
+## Version: 0.1.0
 ## RequiredDeps: EllesmereUI
 ## SavedVariables: CarGOOrbitDB
 
@@ -13,6 +13,10 @@ Core/Database.lua
 Core/EUIAdapter.lua
 Core/Diagnostics.lua
 Modules/InfoBar/Core.lua
+Modules/InfoBar/Presets.lua
+Modules/InfoBar/Registry.lua
+Modules/InfoBar/Layout.lua
+Modules/InfoBar/Providers/Time.lua
 Modules/EnhancedResourceBars/Core.lua
 UI/Skin.lua
 UI/DebugPanel.lua

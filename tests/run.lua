@@ -1,5 +1,5 @@
 -- Isolated behavioral tests. The mock implements only public WoW UI behavior
--- needed by this bootstrap; it does not reproduce any third-party addon code.
+-- needed by the addon; it does not reproduce any third-party addon code.
 assert(_VERSION == "Lua 5.1", "Run these checks with Lua 5.1")
 ADDON_ROOT = ADDON_ROOT or "CarGO_Orbit"
 if not TOC_ENTRIES then
@@ -38,6 +38,18 @@ local function sandbox(options)
     local env = setmetatable({}, { __index = _G })
     env._G = env
     env.frames, env.timers, env.messages = {}, {}, {}
+    env.localHour, env.localMinute = 23, 7
+    env.serverHour, env.serverMinute = 6, 45
+    env.combat = options.combat or false
+    env.date = function(format)
+        if format == "%H:%M" then return string.format("%02d:%02d", env.localHour, env.localMinute) end
+        if format == "%H" then return string.format("%02d", env.localHour) end
+        if format == "%M" then return string.format("%02d", env.localMinute) end
+        error("Unexpected date format: " .. tostring(format))
+    end
+    env.GetGameTime = function() return env.serverHour, env.serverMinute end
+    env.InCombatLockdown = function() return env.combat end
+    env.MouseIsOver = function() error("Use the current frame:IsMouseOver public API") end
     env.SlashCmdList = {}
     env.EllesmereUI = options.eui
     env.CarGOOrbitDB = options.db
@@ -47,7 +59,7 @@ local function sandbox(options)
 
     local methods = {}
     local function object(kind)
-        return setmetatable({ kind = kind, scripts = {}, events = {}, shown = true,
+        return setmetatable({ kind = kind, scripts = {}, events = {}, shown = true, alpha = 1,
             regions = {}, colorChanges = 0, font = { "Fonts\\FRIZQT__.TTF", 12, "" } }, { __index = methods })
     end
     function methods:SetScript(name, fn) self.scripts[name] = fn end
@@ -56,13 +68,34 @@ local function sandbox(options)
     function methods:UnregisterEvent(event) self.events[event] = nil end
     function methods:UnregisterAllEvents() self.events = {} end
     function methods:SetSize(width, height) self.width, self.height = width, height end
-    function methods:GetWidth() return self.width end
-    function methods:GetHeight() return self.height end
-    function methods:SetPoint(...) self.point = { ... } end
-    function methods:SetAllPoints() end
+    function methods:SetWidth(width) self.width = width end
+    function methods:SetHeight(height) self.height = height end
+    function methods:GetWidth()
+        if self.allPoints then return self.allPoints:GetWidth() end
+        return self.width
+    end
+    function methods:GetHeight()
+        if self.allPoints then return self.allPoints:GetHeight() end
+        return self.height
+    end
+    function methods:SetPoint(...)
+        self.point = { ... }
+        self.points = self.points or {}
+        self.points[#self.points + 1] = self.point
+    end
+    function methods:ClearAllPoints() self.point, self.points = nil, {} end
+    function methods:SetAllPoints(target) self.allPoints = target or self.parent end
+    function methods:SetParent(parent) self.parent = parent end
+    function methods:GetParent() return self.parent end
+    function methods:SetAlpha(alpha) self.alpha = alpha end
+    function methods:GetAlpha() return self.alpha end
+    function methods:GetEffectiveScale() return 1 end
+    function methods:IsMouseOver() return self.hovered == true end
     function methods:SetFrameStrata(value) self.strata = value end
     function methods:SetClampedToScreen() end
-    function methods:EnableMouse() end
+    function methods:EnableMouse(enabled) self.mouseEnabled = enabled end
+    function methods:SetMouseClickEnabled(enabled) self.mouseClickEnabled = enabled end
+    function methods:RegisterForClicks(...) self.clicks = { ... } end
     function methods:SetMovable() end
     function methods:RegisterForDrag() end
     function methods:StartMoving() self.moving = true end
@@ -72,6 +105,10 @@ local function sandbox(options)
     function methods:ClearFocus() self.focused = false end
     function methods:SetText(value) self.text = value end
     function methods:GetText() return self.text end
+    function methods:GetStringWidth() return #(self.text or "") * self.font[2] * 0.6 end
+    function methods:GetStringHeight() return self.font[2] end
+    function methods:SetJustifyH(value) self.justifyH = value end
+    function methods:SetJustifyV(value) self.justifyV = value end
     function methods:SetChecked(value) self.checked = value end
     function methods:GetChecked() return self.checked end
     function methods:SetFont(...) self.font = { ... } end
@@ -87,11 +124,13 @@ local function sandbox(options)
     function methods:SetValue(value) self.value = value end
     function methods:CreateTexture()
         local result = object("Texture")
+        result.parent = self
         self.regions[#self.regions + 1] = result
         return result
     end
-    function methods:CreateFontString()
+    function methods:CreateFontString(_, _, template)
         local result = object("FontString")
+        result.parent, result.template = self, template
         self.regions[#self.regions + 1] = result
         return result
     end
@@ -111,6 +150,9 @@ local function sandbox(options)
     end
     function methods:IsShown() return self.shown end
     env.UIParent = object("Frame")
+    env.UIParent:SetSize(1920, 1080)
+    env.GetScreenWidth = function() return env.UIParent:GetWidth() end
+    env.GetScreenHeight = function() return env.UIParent:GetHeight() end
     env.CreateFrame = function(kind, name, parent, template)
         local frame = object(kind)
         frame.parent, frame.template = parent, template
@@ -118,13 +160,16 @@ local function sandbox(options)
         if name then env[name] = frame end
         return frame
     end
-    env.C_Timer = { NewTimer = function(seconds, callback)
-        local timer = { seconds = seconds, callback = callback, cancelled = false }
+    local function timerFactory(repeating)
+      return function(seconds, callback)
+        local timer = { seconds = seconds, callback = callback, cancelled = false, repeating = repeating }
         function timer:Cancel() self.cancelled = true end
         function timer:Fire() self.callback() end
         env.timers[#env.timers + 1] = timer
         return timer
-    end }
+      end
+    end
+    env.C_Timer = { NewTimer = timerFactory(false), NewTicker = timerFactory(true) }
     function env:Fire(event, ...)
         for _, frame in ipairs(self.frames) do
             if frame.events[event] and frame.scripts.OnEvent then
@@ -182,13 +227,13 @@ test("TOC loads safely and initializes only for its own addon", function()
     env:Fire("ADDON_LOADED", "CarGO_Orbit")
     equal(ns:IsEnabled(), true)
     equal(ns.name, "CarGO_Orbit")
-    equal(ns.version, "0.0.1-dev")
+    equal(ns.version, "0.1.0")
     equal(ns.capabilities.eui, false)
     equal(ns.capabilities.skinAPI, false)
     equal(ns.capabilities.dataBarsExtensionAPI, false)
     equal(ns.capabilities.resourceBarsExtensionAPI, false)
     equal(ns.capabilities.optionsRegistrationAPI, false)
-    equal(#env.frames, 1, "Bootstrap must not create feature UI")
+    equal(#env.frames, 1, "Disabled features must not create UI")
     equal(#env.messages, 0, "Normal startup must be quiet")
 end)
 
@@ -201,9 +246,9 @@ test("database repairs malformed known fields and preserves unknown data", funct
     equal(ns.db.profile.debug, false)
     equal(ns.db.profile.infoBar.enabled, false)
     equal(ns.db.profile.infoBar.future, 37)
-    equal(ns.db.profile.enhancedResourceBars.enabled, false)
+    equal(ns.db.profile.enhancedResourceBars, false, "InfoBar migration must not change existing Resource Bars data")
     equal(ns.db.profile.custom.keep, true)
-    equal(ns.db.meta.schemaVersion, 1)
+    equal(ns.db.meta.schemaVersion, 2)
     equal(ns.db.meta.future, 8)
     equal(ns.db.future, 9)
     ns.db.profile.debug = true
@@ -211,12 +256,12 @@ test("database repairs malformed known fields and preserves unknown data", funct
     equal(ns.db.profile.debug, true, "Defaults must not overwrite valid settings")
     for _, malformed in ipairs({ false, 12, "broken" }) do
         local _, repaired = sandbox({ db = malformed })
-        equal(repaired.db.meta.schemaVersion, 1)
+        equal(repaired.db.meta.schemaVersion, 2)
         equal(repaired.db.profile.infoBar.enabled, false)
     end
 end)
 
-test("module stubs persist explicit toggles and preserve preferences on shutdown", function()
+test("modules persist explicit toggles and preserve preferences on shutdown", function()
     local env, ns = sandbox()
     local info, resources = ns:GetModule("InfoBar"), ns:GetModule("EnhancedResourceBars")
     equal(info:IsEnabled(), false)
@@ -227,7 +272,8 @@ test("module stubs persist explicit toggles and preserve preferences on shutdown
     equal(resources.state, "enabled-but-no-host")
     equal(ns.db.profile.infoBar.enabled, true)
     equal(ns.db.profile.enhancedResourceBars.enabled, true)
-    equal(#env.frames, frameCount, "Stubs must not create feature frames")
+    assert(#env.frames > frameCount, "InfoBar must create its feature frames")
+    local liveFrames = #env.frames
     ns:Disable()
     equal(info:IsEnabled(), false)
     equal(resources:IsEnabled(), false)
@@ -235,6 +281,7 @@ test("module stubs persist explicit toggles and preserve preferences on shutdown
     ns:Enable()
     equal(info:IsEnabled(), true)
     equal(resources.state, "enabled-but-no-host")
+    equal(#env.frames, liveFrames, "InfoBar must reuse its frames on enable")
     info:Disable(); resources:Disable()
     equal(ns.db.profile.infoBar.enabled, false)
     equal(ns.db.profile.enhancedResourceBars.enabled, false)
@@ -499,9 +546,11 @@ test("slash aliases report status, persist debug and reuse panel", function()
     local command = env.SlashCmdList.CARGOORBIT
     equal(type(command), "function")
     command("status")
-    equal(#env.messages, 10)
+    equal(#env.messages, 12)
     local status = table.concat(env.messages, "\n")
     assert(status:find("InfoBar: disabled", 1, true))
+    assert(status:find("InfoBar providers: 1", 1, true))
+    assert(status:find("InfoBar preset: toxi", 1, true))
     assert(status:find("ResourceBars extension: no", 1, true))
     command("debug"); equal(ns.db.profile.debug, true)
     command("debug"); equal(ns.db.profile.debug, false)
@@ -518,6 +567,8 @@ test("debug logging remains bounded across toggles", function()
     ns:Debug("budget already spent")
     equal(#env.messages, 101)
 end)
+
+assert(loadfile((TEST_ROOT or "tests") .. "/infobar.lua"))()(test, equal, sandbox, public_api)
 
 print(string.format("Behavioral tests: %d passed, %d failed (Lua 5.1; mocked WoW runtime)", passed, failed))
 if failed > 0 then error(tostring(failed) .. " behavioral test(s) failed") end

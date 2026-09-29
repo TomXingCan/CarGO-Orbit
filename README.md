@@ -2,56 +2,69 @@
 
 CarGO Orbit is a companion extension for EllesmereUI.
 
-**0.0.1-dev** establishes the addon lifecycle, saved settings, public API adapter, diagnostics, and a small skinning test panel. InfoBar and Enhanced Resource Bars are lifecycle stubs; this version does not implement their planned gameplay features.
+**0.1.0** adds an Orbit-owned InfoBar with nine logical slots, an independently centered clock, a small provider registry, and local configuration commands. Time is the only implemented provider. InfoBar is disabled by default; run `/orbit infobar` to enable it.
 
 - Requires EllesmereUI and World of Warcraft Retail, interface `120100`.
-- Not affiliated with EllesmereUI.
-- Does not bundle EllesmereUI or modify its files.
-- Only documented public integration APIs are used at this stage.
+- Not affiliated with EllesmereUI; does not bundle or modify its files.
+- Uses documented public integration APIs through one adapter.
 - CarGO UI and CarGO Orbit are separate addons.
+- Enhanced Resource Bars remains a lifecycle stub.
 
 ## Installation
 
-Install EllesmereUI separately. Copy this repository's `CarGO_Orbit` directory into `World of Warcraft/_retail_/Interface/AddOns/`, so the addon manifest is at `Interface/AddOns/CarGO_Orbit/CarGO_Orbit.toc`. Enable both addons in the Retail client. Classic and other client variants are unsupported.
+Install EllesmereUI separately. Copy this repository's `CarGO_Orbit` directory into `World of Warcraft/_retail_/Interface/AddOns/`, so the manifest is at `Interface/AddOns/CarGO_Orbit/CarGO_Orbit.toc`. Enable both addons in Retail. Classic and other client variants are unsupported.
 
 The repository name is `CarGO-Orbit`; the installed addon directory is `CarGO_Orbit`.
 
+## InfoBar
+
+The default bar sits at the bottom, uses available screen width with a 12-unit outside margin on each side, and has height `30`, spacing `20`, and a faint dark background. Each of the three regions has three slots. Center slot 2 remains at the bar's geometric center regardless of other content.
+
+| Slot | Left | Center | Right |
+| --- | --- | --- | --- |
+| 1 | MicroMenu | Travel | XPRep |
+| 2 | Empty | **Time** | Currency |
+| 3 | Durability | Spec | System |
+
+Only Time renders content. Other provider keys remain saved and their slots stay empty without warning text. The clock defaults to local time, 24-hour `HH:MM`, font size `32`, and vertical offset `1`. It uses one one-second ticker while enabled. Narrow hosts reduce the rendered font without changing the saved size or moving the center.
+
 ## Commands
 
-Both `/orbit` and `/cgo` accept the following commands:
+Both `/orbit` and `/cgo` accept these commands. Values are validated before saving.
 
 | Command | Behavior |
 | --- | --- |
-| `status` | Print version, module state, and public integration capabilities locally. |
-| `debug` | Toggle debug logging and save the setting. |
-| `panel` | Show or hide the bootstrap skinning test panel. |
+| `status` | Print version, module state, provider count, preset, and public capabilities. |
+| `debug` | Toggle saved debug logging. |
+| `panel` | Toggle the existing bootstrap skinning test panel. |
+| `infobar` | Toggle InfoBar and save its enabled state. |
+| `infobar debug` | Toggle session-only slot outlines and labels, independently of logging. |
+| `infobar reset` | Restore known settings and the default mapping; preserve enabled state and unknown fields. |
+| `infobar help` | Print the InfoBar command summary. |
+| `infobar position top/bottom` | Choose the screen edge. |
+| `infobar width 0` | Use available screen width. |
+| `infobar width 240..10000` | Set requested width; effective width is capped to available screen width. |
+| `infobar height 16..100` | Set bar height. |
+| `infobar spacing 0..100` | Set slot spacing; narrow layouts cap effective spacing. |
+| `infobar visibility always/no_combat/mouseover` | Choose the display policy. |
+| `infobar time local/server` | Choose the clock source. |
+| `infobar time 12/24` | Choose hour format; no AM/PM secondary text. |
+| `infobar font 8..64` | Set requested clock font size. |
+| `infobar offset -40..40` | Set clock vertical offset. |
+| `infobar background on/off` | Enable or disable the background. |
+| `infobar background 0..1` | Set background alpha. |
 
-The test panel exercises Orbit-owned controls through the adapter. It is not an options UI. Theme-dependent custom drawing reads current public colors when refreshing. If public skinning is unavailable at creation, standard client controls remain usable.
+Use one value from a slash-separated choice or one number from a range; for example, `/orbit infobar position top` and `/orbit infobar height 36`.
 
-## Integration boundary
+`ALWAYS` shows the enabled bar. `NO_COMBAT` hides it during combat. `MOUSEOVER` retains a transparent motion-sensitive region and reveals it on entry without cursor polling. Empty slots and Time allow clicks through; a future provider receives clicks only when it implements a click handler. Visibility does not stop the Time ticker; disabling InfoBar cancels its runtime resources.
 
-`CarGO_Orbit/Core/EUIAdapter.lua` is the only EllesmereUI integration boundary. It registers through `EllesmereUI.RegisterSkin` and uses the public Skinning API. The public contract is documented in [EllesmereUI's Skinning API reference](https://github.com/EllesmereGaming/EllesmereUI/blob/main/SKINNING_API.md).
+## Integration and saved settings
 
-DataBars extension, Resource Bars extension, and native options registration capabilities remain `false`. Their presence is never inferred from implementation details. Enabling the resource-bar stub only records `enabled-but-no-host`; it does not attach to another addon's frames.
+`CarGO_Orbit/Core/EUIAdapter.lua` is the only EllesmereUI integration boundary. It registers through the public [Skinning API](https://github.com/EllesmereGaming/EllesmereUI/blob/main/SKINNING_API.md). InfoBar owns its frames and background and reads public font, accent, and panel colors through the adapter. Supported appearance notifications refresh the existing bar and clock. Unavailable public styling has standard client font and local color fallbacks. If disabling third-party skinning supplies no notification, custom elements can retain their last appearance until a settings apply or reload.
 
-The public contract has no callback-unregistration method. The adapter retains a stable callback bridge and a borrowed public skin API reference for the session, clears Orbit-owned listeners on disable, and suppresses callback dispatch while disabled. See [architecture](docs/ARCHITECTURE.md) for lifecycle details.
+DataBars extension, Resource Bars extension, and native options registration capabilities remain `false`. The separate bootstrap panel exercises public controls; it is not an options UI. The public API has no callback-unregistration operation, so the adapter keeps one session bridge and removes Orbit listeners when disabled.
 
-## Saved settings
-
-Only `CarGOOrbitDB` is owned by this addon:
-
-```lua
-CarGOOrbitDB = {
-    profile = {
-        debug = false,
-        infoBar = { enabled = false },
-        enhancedResourceBars = { enabled = false },
-    },
-    meta = { schemaVersion = 1 },
-}
-```
-
-Initialization fills missing defaults and preserves unknown fields. Profiles, import, and export are outside this stage. Orbit does not read or write EllesmereUI's saved settings.
+Only `CarGOOrbitDB` is owned by this addon. Schema version `2` extends `profile.infoBar` in place with layout, appearance, visibility, and Time settings. Migration repairs known InfoBar fields, retains unknown fields and valid preferences, and leaves existing Enhanced Resource Bars data unchanged. Complete defaults are in the [InfoBar specification](docs/INFOBAR_SPEC.md). Profiles and import/export remain outside scope.
 
 ## Validation
 
@@ -62,26 +75,25 @@ python tests/static_scan.py
 python tests/run.py
 ```
 
-The Python runner requires Python 3.9+ and the `lupa.lua51` module; it also recognizes a local installation under the ignored `.tools/python` directory. A development-only local installation can be made with `python -m pip install --target .tools/python lupa`. If a standalone Lua 5.1 executable is available, the harness can instead be run with `lua5.1 tests/run.lua`, alongside the separate static scan. Test tooling is not installed or bundled with the addon. Static checks and mocked execution do not establish Retail compatibility.
+The runner requires Python 3.9+ and `lupa.lua51`; it recognizes a local installation under ignored `.tools/python`. A development installation can use `python -m pip install --target .tools/python lupa`. With standalone Lua 5.1, run `lua5.1 tests/run.lua` alongside the static scan. These tools are not bundled with the addon.
+
+Checks cover schema migration, preset mapping, pure geometry, provider lifecycle, clock formatting and sources, visibility, commands, public API fallback, TOC paths, and Lua 5.1 syntax. Mocks cannot establish game-client rendering or compatibility.
 
 ### Manual Retail checklist
 
-In-game validation has not been performed for this bootstrap.
+**Unverified:** Retail execution has not been performed for `0.1.0`.
 
-1. Load with a current EllesmereUI installation and confirm there are no Lua errors.
-2. Run `/orbit status` and `/cgo status`; verify the skinning state and the three unsupported extension capabilities.
-3. Run `/orbit debug`, reload the UI, and confirm the setting persists in `CarGOOrbitDB`.
-4. Open `/orbit panel`; inspect the panel, button, checkbox, edit box, status bar, and font sample.
-5. Change EllesmereUI accent/theme settings and verify supported styling refreshes without recreating the window.
-6. Reload with EllesmereUI third-party skinning disabled; confirm diagnostics report the unavailable skin API and the test panel remains usable.
-7. Exercise disable/re-enable with a development harness; verify owned events and timers are released, the panel hides, and callbacks do not dispatch while disabled.
+1. Install with EllesmereUI and run `/reload`; confirm no Lua errors. Existing users retain valid settings; new users start with InfoBar disabled.
+2. Run `/orbit status` and `/cgo status`; confirm provider count `1`, preset `toxi`, and the three unsupported extension capabilities.
+3. Enable `/orbit infobar`; confirm a centered clock and no placeholder text in the other eight slots. Disable it and confirm the entire bar disappears.
+4. Toggle `/orbit infobar debug`; inspect all nine distinct slots, then turn it off and confirm outlines and labels disappear.
+5. Test top/bottom, full/fixed widths, height, spacing, window resizing, and UI scale changes. Center slot 2 must remain centered. Narrow clocks should fit their host.
+6. Switch local/server and 12/24-hour formats; compare with the appropriate client clock. Test font size, offset, and minute rollover.
+7. Test all three visibility modes. Enter/leave combat for `NO_COMBAT`; move onto/away from the transparent region for `MOUSEOVER`. Confirm ordinary clicks pass through Time and empty slots.
+8. Change EllesmereUI font/accent/theme and verify supported updates. Disable third-party skinning, reload, and confirm the bar still works with fallback styling.
+9. Change settings, reload, and confirm persistence. Run `infobar reset`; confirm defaults return while enabled state is preserved. Verify Enhanced Resource Bars settings remain unchanged.
+10. Repeatedly toggle and resize using a development harness; verify one active ticker, no duplicated handlers, and timer/listener cleanup on disable. Recheck the existing `/orbit panel` controls.
 
-## Planned modules
-
-- [InfoBar](docs/INFOBAR_SPEC.md): a compact information bar using EllesmereUI's visual language.
-- [Enhanced Resource Bars](docs/ENHANCED_RESOURCE_BARS_SPEC.md): independent enhancements gated on a documented host contract.
-- Future combat helpers and class tools.
-
-See the [roadmap](docs/ROADMAP.md) for milestones. These features are not implemented in `0.0.1-dev`.
+See [architecture](docs/ARCHITECTURE.md), the [InfoBar specification](docs/INFOBAR_SPEC.md), and the [roadmap](docs/ROADMAP.md). The next milestone is `0.1.x` InfoBar core providers; no later milestone is implemented here.
 
 Project-owned source is **All Rights Reserved**, copyright (c) 2026 Tom Sheng (TomXingCan). See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
