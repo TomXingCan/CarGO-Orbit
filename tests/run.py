@@ -26,12 +26,13 @@ def main():
     lua = LuaRuntime(unpack_returned_tuples=True)
     assert lua.eval("_VERSION") == "Lua 5.1", "Tests must use Lua 5.1"
     compile_source = lua.eval("function(source, name) local fn, err = loadstring(source, name); return fn ~= nil, err end")
-    sources = result["lua_files"] + [root / "tests" / "run.lua"]
+    sources = result["lua_files"] + sorted((root / "tests").glob("*.lua"))
     for path in sources:
         valid, error = compile_source(path.read_text(encoding="utf-8-sig"), "@" + path.as_posix())
         assert valid, error
     print("PASS Lua 5.1 syntax (" + str(len(sources)) + " files)")
     lua.globals().ADDON_ROOT = result["toc"].parent.as_posix()
+    lua.globals().TEST_ROOT = (root / "tests").as_posix()
     lua.globals().TOC_ENTRIES = lua.table_from([path.relative_to(result["toc"].parent).as_posix() for path in result["lua_files"]])
     lua.execute((root / "tests" / "run.lua").read_text(encoding="utf-8-sig"))
 

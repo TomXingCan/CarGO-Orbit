@@ -7,5 +7,5 @@ ns.L = {
     NO = "no",
     ENABLED = "enabled",
     DISABLED = "disabled",
-    COMMAND_HELP = "Commands: /orbit status, /orbit debug, /orbit panel (alias: /cgo)",
+    COMMAND_HELP = "Commands: /orbit status, /orbit debug, /orbit panel, /orbit infobar [help] (alias: /cgo)",
 }

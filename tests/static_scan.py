@@ -30,7 +30,7 @@ def toc_files(toc):
 
 
 def without_lua_comments_and_strings(source):
-    # Sufficient for the deliberately small bootstrap source: preserve newlines
+    # Sufficient for the deliberately small addon source: preserve newlines
     # so a failed boundary check can still identify its source line.
     pattern = r"--\[\[.*?\]\]|--[^\n]*|\[\[.*?\]\]|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'"
     return re.sub(pattern, lambda match: "\n" * match.group(0).count("\n"), source, flags=re.S)
@@ -52,7 +52,7 @@ def run(root):
 
     metadata = dict(re.findall(r"^##\s*([^:]+):\s*(.+)$", toc.read_text(encoding="utf-8-sig"), re.M))
     expected = {
-        "Interface": "120100", "Title": "CarGO Orbit", "Version": "0.0.1-dev",
+        "Interface": "120100", "Title": "CarGO Orbit", "Version": "0.1.0",
         "RequiredDeps": "EllesmereUI", "SavedVariables": "CarGOOrbitDB", "Author": "TomXingCan",
         "Notes": "Combat and information extensions for EllesmereUI.",
     }
@@ -68,6 +68,11 @@ def run(root):
     before("Core/Addon.lua", "Core/EUIAdapter.lua")
     before("Core/EUIAdapter.lua", "UI/Skin.lua")
     before("UI/Skin.lua", "UI/DebugPanel.lua")
+    before("Core/Database.lua", "Modules/InfoBar/Core.lua")
+    before("Core/EUIAdapter.lua", "Modules/InfoBar/Core.lua")
+    before("Modules/InfoBar/Core.lua", "Modules/InfoBar/Layout.lua")
+    before("Modules/InfoBar/Core.lua", "Modules/InfoBar/Registry.lua")
+    before("Modules/InfoBar/Registry.lua", "Modules/InfoBar/Providers/Time.lua")
     assert entries[-1] == "Core/Events.lua", "Lifecycle events must load after all registrations"
     addon_lua = {path.relative_to(addon).as_posix() for path in addon.rglob("*.lua")
                  if "tests" not in path.relative_to(addon).parts

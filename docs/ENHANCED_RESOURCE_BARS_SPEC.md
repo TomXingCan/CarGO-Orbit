@@ -2,7 +2,7 @@
 
 ## Current scope
 
-`0.0.1-dev` contains only `IsEnabled()`, `Enable()`, and `Disable()` lifecycle methods. The module is disabled by default. Enabling it records **enabled-but-no-host** because `resourceBarsExtensionAPI` remains `false`.
+`0.1.0` retains the original `IsEnabled()`, `Enable()`, and `Disable()` lifecycle stub with no added functionality or data migration. The module is disabled by default. Enabling it records **enabled-but-no-host** because `resourceBarsExtensionAPI` remains `false`.
 
 It does not search for host frames, attach to resource bars, draw overlays, calculate predictions, or hook rebuild/update behavior. No private fallback is permitted.
 

@@ -103,6 +103,45 @@ function Events:After(owner, seconds, callback)
     return timer
 end
 
+function Events:Every(owner, seconds, callback)
+    if owner == nil or type(seconds) ~= "number" or seconds <= 0
+        or seconds ~= seconds or seconds == math.huge
+        or type(callback) ~= "function" or not C_Timer
+        or type(C_Timer.NewTicker) ~= "function" then
+        return nil
+    end
+    local records = self.timers[owner]
+    if not records then
+        records = {}
+        self.timers[owner] = records
+    end
+    local record = { callback = callback }
+    records[record] = true
+    local ok, timer = pcall(C_Timer.NewTicker, seconds, function()
+        -- Cleanup also invalidates already-queued ticker callbacks.
+        local run = record.callback
+        if run then
+            local success, failure = pcall(run)
+            if not success then
+                ReportFailure("Ticker", failure)
+            end
+        end
+    end)
+    if not ok or timer == nil then
+        record.callback = nil
+        records[record] = nil
+        if next(records) == nil then
+            self.timers[owner] = nil
+        end
+        if not ok then
+            ReportFailure("Ticker creation", timer)
+        end
+        return nil
+    end
+    record.timer = timer
+    return timer
+end
+
 function Events:Cleanup(owner)
     local events = {}
     for event, handlers in pairs(self.handlers) do

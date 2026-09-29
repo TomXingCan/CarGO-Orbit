@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.name = addonName or "CarGO_Orbit"
 ns.title = "CarGO Orbit"
-ns.version = "0.0.1-dev"
+ns.version = "0.1.0"
 ns.debug = false
 ns.modules = {}
 ns.moduleOrder = {}
@@ -50,7 +50,7 @@ function ns:Enable()
     for _, name in ipairs(self.moduleOrder) do
         local module = self.modules[name]
         local settings = self.db.profile[module.settingsKey]
-        if settings and settings.enabled and type(module.Enable) == "function" then
+        if type(settings) == "table" and settings.enabled == true and type(module.Enable) == "function" then
             module:Enable()
         end
     end
